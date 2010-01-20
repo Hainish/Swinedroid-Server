@@ -1,0 +1,22 @@
+Swinedroid Server - Version 0.10 - A snort monitoring and management tool for Android, server component
+Copyright (C) 2010  William Budington <bill.budington@gmail.com>
+-----------------------------------------------------
+
+Requirements:
+
+	* CherryPy >= 3.1
+	* pyOpenSSL
+	* Python XML support
+	* Python mySQL support
+
+Configuration:
+
+	1. Run "./makecert.sh" - this will generate a self-signed certificate.  You can also generate your own certificate, if you like.  It should be noted that a this time the swinedroid client connection is secure but *not* authenticated. 
+	
+	2. Change swinedroid.conf to match your mySQL settings.
+
+	3. Change cherrypy.conf to whatever port you want the server to run on, or leave the default 6060.
+
+Running:
+
+	1. Run "./server.py".  If you want it to run as a daemon, run "nohup ./server.py &".
