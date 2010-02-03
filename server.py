@@ -127,6 +127,7 @@ class Root:
 					mysql_connection.close()
 				elif call == "alerts":
 					mysql_connection = MySQLdb.connect(host=mysql_host, user=mysql_username, passwd=mysql_password, db=mysql_database)
+					mysql_num_cursor = mysql_connection.cursor()
 					mysql_cursor = mysql_connection.cursor()
 					where_list = []
 					if alert_severity == "High":
@@ -151,6 +152,22 @@ class Root:
 						limit_clean = limit
 					else:
 						limit_clean = "30"
+					mysql_num_cursor.execute("""
+						SELECT
+							COUNT(`event`.`sid`)
+						FROM `event`
+						LEFT JOIN `signature` ON
+							`signature`.`sig_id`=`event`.`signature`
+						WHERE %s
+						""" % (' AND '.join(where_list)))
+					num_alerts_elem = xml.createElement("num_alerts")
+					root_elem.appendChild(num_alerts_elem)
+					mysql_row = mysql_num_cursor.fetchone()
+					if mysql_row != None:
+						num_alerts, = mysql_row
+					else:
+						num_alerts = 0
+					num_alerts_elem.appendChild(xml.createTextNode(str(num_alerts)))
 					mysql_cursor.execute("""
 						SELECT
 							`event`.`sid`,
@@ -170,13 +187,15 @@ class Root:
 						ORDER BY `event`.`timestamp` DESC
 						LIMIT %s, %s
 						""" % (' AND '.join(where_list), starting_at_clean, limit_clean))
+					alerts_elem = xml.createElement("alerts")
+					root_elem.appendChild(alerts_elem)
 					while 1:
 						mysql_row = mysql_cursor.fetchone()
 						if mysql_row == None:
 							break
 						sid, cid, ip_src, ip_dst, sig_priority, sig_name, timestamp = mysql_row
 						alert_elem = xml.createElement("alert")
-						root_elem.appendChild(alert_elem)
+						alerts_elem.appendChild(alert_elem)
 						sid_elem = xml.createElement("sid")
 						sid_elem.appendChild(xml.createTextNode(str(sid)))
 						alert_elem.appendChild(sid_elem)
