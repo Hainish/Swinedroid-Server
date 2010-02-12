@@ -35,6 +35,7 @@ class Root:
 				if call=="overview":
 					mysql_connection = MySQLdb.connect(host=mysql_host, user=mysql_username, passwd=mysql_password, db=mysql_database)
 					mysql_cursor = mysql_connection.cursor()
+					mysql_graph_cursor = mysql_connection.cursor()
 					severity_all_time = {1: 0, 2: 0, 3: 0}
 					severity_last_72 = {1: 0, 2: 0, 3: 0}
 					severity_last_24 = {1: 0, 2: 0, 3: 0}
@@ -124,6 +125,57 @@ class Root:
 					last_24_low_severity_elem = xml.createElement("low")
 					last_24_elem.appendChild(last_24_low_severity_elem)
 					last_24_low_severity_elem.appendChild(xml.createTextNode(str(severity_last_24[1])))
+					num_days = 10
+					union_list = []
+					for i in range(1, num_days + 1):
+						union_list.append("SELECT 0, 0, date_format( SUBDATE(NOW(), INTERVAL " + str(i) + " day), '%m/%d'), 0")
+					mysql_cursor.execute("""
+						SELECT
+							date,
+							sig_priority,
+							COUNT(sig_priority) AS sig_priority_count
+						FROM (
+							SELECT
+								event.sid,
+								event.cid,
+								date_format( event.timestamp, '%m/%d' ) AS date,
+								signature.sig_priority AS sig_priority
+							FROM event
+							LEFT JOIN signature ON
+								event.signature=signature.sig_id
+							WHERE date_format( SUBDATE(NOW(), INTERVAL """ + str(num_days) + """ day), '%Y-%m-%d') <= event.timestamp AND
+								date_format(NOW(), '%Y-%m-%d') > event.timestamp
+							UNION """ + " UNION ".join(union_list) + """
+							) AS derived
+						GROUP BY date, sig_priority
+						ORDER BY
+							date ASC,
+							sig_priority ASC
+						""")
+					graph_statistics_elem = xml.createElement("graph_statistics")
+					root_elem.appendChild(graph_statistics_elem)
+					last_label = None
+					while 1:
+						mysql_row = mysql_cursor.fetchone()
+						if mysql_row == None:
+							break
+						label, sig_priority, sig_priority_count = mysql_row
+						if label != last_label:							
+							graph_info_elem = xml.createElement("graph_info")
+							graph_statistics_elem.appendChild(graph_info_elem)
+							label_elem = xml.createElement("label")
+							graph_info_elem.appendChild(label_elem)
+							label_elem.appendChild(xml.createTextNode(label))
+						if sig_priority == 1:
+							sig_priority_elem = xml.createElement("low")
+						if sig_priority == 2:
+							sig_priority_elem = xml.createElement("medium")
+						if sig_priority == 3:
+							sig_priority_elem = xml.createElement("high")
+						if sig_priority == 1 or sig_priority == 2 or sig_priority == 3:
+							graph_info_elem.appendChild(sig_priority_elem)
+							sig_priority_elem.appendChild(xml.createTextNode(str(sig_priority_count)))
+						last_label = label
 					mysql_connection.close()
 				elif call == "alerts":
 					mysql_connection = MySQLdb.connect(host=mysql_host, user=mysql_username, passwd=mysql_password, db=mysql_database)
