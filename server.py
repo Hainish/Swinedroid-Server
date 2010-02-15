@@ -232,7 +232,7 @@ class Root:
 						FROM `event`
 						LEFT JOIN `signature` ON
 							`signature`.`sig_id`=`event`.`signature`
-						LEFT JOIN `iphdr` ON
+						INNER JOIN `iphdr` ON
 							`event`.`sid`=`iphdr`.`sid` AND
 							`event`.`cid`=`iphdr`.`cid`
 						WHERE %s
