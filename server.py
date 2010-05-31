@@ -25,7 +25,7 @@ if config.has_option('mysql','database'):
 	mysql_database = config.get('mysql','database')
 
 class Root:
-	def index(self, username="", password="", call="", alert_severity="", search_term="", beginning_datetime="", ending_datetime="", starting_at="", limit=""):
+	def index(self, username="", password="", call="", alert_severity="", search_term="", beginning_datetime="", ending_datetime="", starting_at="", limit="", sid="", cid=""):
 		# Create a new xml document, append root
 		xml = minidom.Document()
 		root_elem = xml.createElement("root")
@@ -269,6 +269,85 @@ class Root:
 						timestamp_elem = xml.createElement("timestamp")
 						timestamp_elem.appendChild(xml.createTextNode(str(timestamp)))
 						alert_elem.appendChild(timestamp_elem)
+					mysql_connection.close()
+				elif call == "alert":
+					mysql_connection = MySQLdb.connect(host=mysql_host, user=mysql_username, passwd=mysql_password, db=mysql_database)
+					mysql_num_cursor = mysql_connection.cursor()
+					mysql_cursor = mysql_connection.cursor()
+					mysql_cursor.execute("""
+						SELECT
+							`tcphdr`.`tcp_sport`,
+							`tcphdr`.`tcp_dport`,
+							`udphdr`.`udp_sport`,
+							`udphdr`.`udp_dport`,
+							`icmphdr`.`icmp_type`,
+							`icmphdr`.`icmp_code`,
+							`sensor`.`hostname`,
+							`sensor`.`interface`,
+							`data`.`data_payload`
+						FROM (SELECT '%s' AS sid, '%s' AS cid) AS `abstract`
+						LEFT JOIN `tcphdr` ON
+							`abstract`.`sid`=`tcphdr`.`sid` AND
+							`abstract`.`cid`=`tcphdr`.`cid`
+						LEFT JOIN `udphdr` ON
+							`abstract`.`sid`=`udphdr`.`sid` AND
+							`abstract`.`cid`=`udphdr`.`cid`
+						LEFT JOIN `icmphdr` ON
+							`abstract`.`sid`=`icmphdr`.`sid` AND
+							`abstract`.`cid`=`icmphdr`.`cid`
+						LEFT JOIN `data` ON
+							`abstract`.`sid`=`data`.`sid` AND
+							`abstract`.`cid`=`data`.`cid`
+						LEFT JOIN `sensor` ON
+							`abstract`.`sid`=`sensor`.`sid`
+						""" % (sid, cid))
+					mysql_row = mysql_cursor.fetchone()
+					if mysql_row != None:
+						print mysql_row
+						tcp_sport, tcp_dport, udp_sport, udp_dport, icmp_type, icmp_code, hostname, interface, data_payload = mysql_row
+						alert_elem = xml.createElement("alert")
+						root_elem.appendChild(alert_elem)
+						protocol_elem = xml.createElement("protocol")
+						alert_elem.appendChild(protocol_elem)
+						if tcp_sport != None:
+							protocol_elem.appendChild(xml.createTextNode("tcp"))
+							sport_elem = xml.createElement("sport")
+							alert_elem.appendChild(sport_elem)
+							sport_elem.appendChild(xml.createTextNode(str(tcp_sport)))
+							dport_elem = xml.createElement("dport")
+							alert_elem.appendChild(dport_elem)
+							dport_elem.appendChild(xml.createTextNode(str(tcp_dport)))
+						elif udp_sport != None:
+							protocol_elem.appendChild(xml.createTextNode("udp"))
+							sport_elem = xml.createElement("sport")
+							alert_elem.appendChild(sport_elem)
+							sport_elem.appendChild(xml.createTextNode(str(udp_sport)))
+							dport_elem = xml.createElement("dport")
+							alert_elem.appendChild(dport_elem)
+							dport_elem.appendChild(xml.createTextNode(str(udp_dport)))
+						elif icmp_type != None:
+							protocol_elem.appendChild(xml.createTextNode("icmp"))
+							type_elem = xml.createElement("type")
+							alert_elem.appendChild(type_elem)
+							type_elem.appendChild(xml.createTextNode(str(icmp_type)))
+							code_elem = xml.createElement("code")
+							alert_elem.appendChild(code_elem)
+							code_elem.appendChild(xml.createTextNode(str(icmp_code)))
+						else:
+							protocol_elem.appendChild(xml.createTextNode("undefined"))
+						hostname_elem = xml.createElement("hostname")
+						alert_elem.appendChild(hostname_elem)
+						hostname_elem.appendChild(xml.createTextNode(str(hostname)))
+						interface_elem = xml.createElement("interface")
+						alert_elem.appendChild(interface_elem)
+						interface_elem.appendChild(xml.createTextNode(str(interface)))
+						payload_elem = xml.createElement("payload")
+						alert_elem.appendChild(payload_elem)
+						payload_elem.appendChild(xml.createTextNode(str(data_payload)))
+					else:
+						error_elem = xml.createElement("error")
+						error_elem.appendChild(xml.createTextNode("Invalid alert."))
+						root_elem.appendChild(error_elem)
 					mysql_connection.close()
 				else:
 					error_elem = xml.createElement("error")
