@@ -341,9 +341,10 @@ class Root:
 						interface_elem = xml.createElement("interface")
 						alert_elem.appendChild(interface_elem)
 						interface_elem.appendChild(xml.createTextNode(str(interface)))
-						payload_elem = xml.createElement("payload")
-						alert_elem.appendChild(payload_elem)
-						payload_elem.appendChild(xml.createTextNode(str(data_payload)))
+						if data_payload != None:
+							payload_elem = xml.createElement("payload")
+							alert_elem.appendChild(payload_elem)
+							payload_elem.appendChild(xml.createTextNode(str(data_payload)))
 					else:
 						error_elem = xml.createElement("error")
 						error_elem.appendChild(xml.createTextNode("Invalid alert."))
