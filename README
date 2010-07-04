@@ -1,4 +1,4 @@
-Swinedroid Server - Version 0.10 - A snort monitoring and management tool for Android, server component
+Swinedroid Server - Version 0.20 - A snort monitoring and management tool for Android, server component
 Copyright (C) 2010  William Budington <bill.budington@gmail.com>
 -----------------------------------------------------
 
@@ -11,7 +11,7 @@ Requirements:
 
 Configuration:
 
-	1. Run "./makecert.sh" - this will generate a self-signed certificate.  You can also generate your own certificate, if you like.  It should be noted that a this time the swinedroid client connection is secure but *not* authenticated. 
+	1. Run "./makecert.sh" - this will generate a self-signed certificate.  You can also generate your own certificate, if you like.
 	
 	2. Change swinedroid.conf to match your mySQL settings.
 
