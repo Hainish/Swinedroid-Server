@@ -46,7 +46,7 @@ class Root:
 							`signature`.`sig_priority`,
 							COUNT(`signature`.`sig_priority`)
 						FROM `event`
-						LEFT JOIN `signature` ON
+						INNER JOIN `signature` ON
 							`signature`.`sig_id`=`event`.`signature`
 						WHERE 1
 						GROUP BY
@@ -74,7 +74,7 @@ class Root:
 							`signature`.`sig_priority`,
 							COUNT(`signature`.`sig_priority`)
 						FROM `event`
-						LEFT JOIN `signature` ON
+						INNER JOIN `signature` ON
 							`signature`.`sig_id`=`event`.`signature`
 						WHERE SUBDATE(NOW(), INTERVAL 72 HOUR) <= `event`.`timestamp`
 						GROUP BY
@@ -102,7 +102,7 @@ class Root:
 							`signature`.`sig_priority`,
 							COUNT(`signature`.`sig_priority`)
 						FROM `event`
-						LEFT JOIN `signature` ON
+						INNER JOIN `signature` ON
 							`signature`.`sig_id`=`event`.`signature`
 						WHERE SUBDATE(NOW(), INTERVAL 24 HOUR) <= `event`.`timestamp`
 						GROUP BY
@@ -141,7 +141,7 @@ class Root:
 								date_format( event.timestamp, '%m/%d' ) AS date,
 								signature.sig_priority AS sig_priority
 							FROM event
-							LEFT JOIN signature ON
+							INNER JOIN signature ON
 								event.signature=signature.sig_id
 							WHERE date_format( SUBDATE(NOW(), INTERVAL """ + str(num_days) + """ day), '%Y-%m-%d') <= event.timestamp AND
 								date_format(NOW(), '%Y-%m-%d') > event.timestamp
@@ -208,7 +208,7 @@ class Root:
 						SELECT
 							COUNT(`event`.`sid`)
 						FROM `event`
-						LEFT JOIN `signature` ON
+						INNER JOIN `signature` ON
 							`signature`.`sig_id`=`event`.`signature`
 						WHERE %s
 						""" % (' AND '.join(where_list)))
@@ -230,7 +230,7 @@ class Root:
 							`signature`.`sig_name`,
 							`event`.`timestamp`
 						FROM `event`
-						LEFT JOIN `signature` ON
+						INNER JOIN `signature` ON
 							`signature`.`sig_id`=`event`.`signature`
 						INNER JOIN `iphdr` ON
 							`event`.`sid`=`iphdr`.`sid` AND
