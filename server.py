@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import cherrypy, ConfigParser, MySQLdb, re
 from xml.dom import minidom
+from schema import *
 
 CHERRYPY_CONFIG_FILE = 		"cherrypy.conf"
 SWINEDROID_CONFIG_FILE = 	"swinedroid.conf"
@@ -14,15 +15,25 @@ if config.has_option('swinedroid','username'):
 if config.has_option('swinedroid','password'):
 	swinedroid_password = config.get('swinedroid','password')
 
-# load mysql config
-if config.has_option('mysql','host'):
-	mysql_host = config.get('mysql','host')
-if config.has_option('mysql','username'):
-	mysql_username = config.get('mysql','username')
-if config.has_option('mysql','password'):
-	mysql_password = config.get('mysql','password')
-if config.has_option('mysql','database'):
-	mysql_database = config.get('mysql','database')
+# load database config
+if config.has_option('database','database'):
+	database_database = config.get('database','database')
+if config.has_option('database','host'):
+	database_host = config.get('database','host')
+if config.has_option('database','username'):
+	database_username = config.get('database','username')
+if config.has_option('database','password'):
+	database_password = config.get('database','password')
+if config.has_option('database','db_name'):
+	database_db_name = config.get('database','db_name')
+	
+def mysql_handle():
+	return MySQLdb.connect(host=database_host, user=database_username, passwd=database_password, db=database_db_name)
+
+def sqlalchemy_handle():
+	engine = create_engine(database_database + '://' + database_username + ':' + database_password + '@' + database_host + '/' + database_db_name, echo=True)
+	Session = sessionmaker(bind=engine)
+	return Session()
 
 class Root:
 	def index(self, username="", password="", call="", alert_severity="", search_term="", beginning_datetime="", ending_datetime="", starting_at="", limit="", sid="", cid=""):
@@ -33,31 +44,17 @@ class Root:
 		if username == swinedroid_username and password == swinedroid_password:
 			try:
 				if call=="overview":
-					mysql_connection = MySQLdb.connect(host=mysql_host, user=mysql_username, passwd=mysql_password, db=mysql_database)
-					mysql_cursor = mysql_connection.cursor()
-					mysql_graph_cursor = mysql_connection.cursor()
+					session = sqlalchemy_handle()
+					# Prepare severity profiles
 					severity_all_time = {1: 0, 2: 0, 3: 0}
 					severity_last_72 = {1: 0, 2: 0, 3: 0}
 					severity_last_24 = {1: 0, 2: 0, 3: 0}
 					severity_profile_elem = xml.createElement("severity_profile")
 					root_elem.appendChild(severity_profile_elem)
-					mysql_cursor.execute("""
-						SELECT
-							`signature`.`sig_priority`,
-							COUNT(`signature`.`sig_priority`)
-						FROM `event`
-						INNER JOIN `signature` ON
-							`signature`.`sig_id`=`event`.`signature`
-						WHERE 1
-						GROUP BY
-							`signature`.`sig_priority`
-						""")
-					while 1:
-						mysql_row = mysql_cursor.fetchone()
-						if mysql_row == None:
-							break
-						severity_index, alert = mysql_row
-						severity_all_time[int(severity_index)] = int(alert)
+					# Start all-time statistics gathering
+					all_time_results = session.query(func.count(Event.sid), Signature.sig_priority).join(Signature).group_by(Signature.sig_priority).all()
+					for all_time_event_count, all_time_priority in all_time_results:
+						severity_all_time[all_time_priority] = all_time_event_count
 					all_time_elem = xml.createElement("all_time")
 					severity_profile_elem.appendChild(all_time_elem)
 					all_time_high_severity_elem = xml.createElement("high")
@@ -69,23 +66,10 @@ class Root:
 					all_time_low_severity_elem = xml.createElement("low")
 					all_time_elem.appendChild(all_time_low_severity_elem)
 					all_time_low_severity_elem.appendChild(xml.createTextNode(str(severity_all_time[1])))
-					mysql_cursor.execute("""
-						SELECT
-							`signature`.`sig_priority`,
-							COUNT(`signature`.`sig_priority`)
-						FROM `event`
-						INNER JOIN `signature` ON
-							`signature`.`sig_id`=`event`.`signature`
-						WHERE SUBDATE(NOW(), INTERVAL 72 HOUR) <= `event`.`timestamp`
-						GROUP BY
-							`signature`.`sig_priority`
-						""")
-					while 1:
-						mysql_row = mysql_cursor.fetchone()
-						if mysql_row == None:
-							break
-						severity_index, alert = mysql_row
-						severity_last_72[int(severity_index)] = int(alert)
+					# Start 72-hour statistics gathering
+					last_72_results = session.query(func.count(Event.sid), Signature.sig_priority).join(Signature).filter(Event.timestamp >= subdays(3, database_database)).group_by(Signature.sig_priority).all()
+					for last_72_event_count, last_72_priority in last_72_results:
+						severity_last_72[last_72_priority] = last_72_event_count
 					last_72_elem = xml.createElement("last_72")
 					severity_profile_elem.appendChild(last_72_elem)
 					last_72_high_severity_elem = xml.createElement("high")
@@ -97,23 +81,10 @@ class Root:
 					last_72_low_severity_elem = xml.createElement("low")
 					last_72_elem.appendChild(last_72_low_severity_elem)
 					last_72_low_severity_elem.appendChild(xml.createTextNode(str(severity_last_72[1])))
-					mysql_cursor.execute("""
-						SELECT
-							`signature`.`sig_priority`,
-							COUNT(`signature`.`sig_priority`)
-						FROM `event`
-						INNER JOIN `signature` ON
-							`signature`.`sig_id`=`event`.`signature`
-						WHERE SUBDATE(NOW(), INTERVAL 24 HOUR) <= `event`.`timestamp`
-						GROUP BY
-							`signature`.`sig_priority`
-						""")
-					while 1:
-						mysql_row = mysql_cursor.fetchone()
-						if mysql_row == None:
-							break
-						severity_index, alert = mysql_row
-						severity_last_24[int(severity_index)] = int(alert)
+					# Start 24-hour statistics gathering
+					last_24_results = session.query(func.count(Event.sid), Signature.sig_priority).join(Signature).filter(Event.timestamp >= subdays(1, database_database)).group_by(Signature.sig_priority).all()
+					for last_24_event_count, last_24_priority in last_24_results:
+						severity_last_24[last_24_priority] = last_24_event_count
 					last_24_elem = xml.createElement("last_24")
 					severity_profile_elem.appendChild(last_24_elem)
 					last_24_high_severity_elem = xml.createElement("high")
@@ -125,41 +96,18 @@ class Root:
 					last_24_low_severity_elem = xml.createElement("low")
 					last_24_elem.appendChild(last_24_low_severity_elem)
 					last_24_low_severity_elem.appendChild(xml.createTextNode(str(severity_last_24[1])))
-					num_days = 10
-					union_list = []
-					for i in range(1, num_days + 1):
-						union_list.append("SELECT 0, 0, date_format( SUBDATE(NOW(), INTERVAL " + str(i) + " day), '%m/%d'), 0")
-					mysql_cursor.execute("""
-						SELECT
-							date,
-							sig_priority,
-							COUNT(sig_priority) AS sig_priority_count
-						FROM (
-							SELECT
-								event.sid,
-								event.cid,
-								date_format( event.timestamp, '%m/%d' ) AS date,
-								signature.sig_priority AS sig_priority
-							FROM event
-							INNER JOIN signature ON
-								event.signature=signature.sig_id
-							WHERE date_format( SUBDATE(NOW(), INTERVAL """ + str(num_days) + """ day), '%Y-%m-%d') <= event.timestamp AND
-								date_format(NOW(), '%Y-%m-%d') > event.timestamp
-							UNION """ + " UNION ".join(union_list) + """
-							) AS derived
-						GROUP BY date, sig_priority
-						ORDER BY
-							date ASC,
-							sig_priority ASC
-						""")
+					# Start preparation for graph
 					graph_statistics_elem = xml.createElement("graph_statistics")
 					root_elem.appendChild(graph_statistics_elem)
 					last_label = None
-					while 1:
-						mysql_row = mysql_cursor.fetchone()
-						if mysql_row == None:
-							break
-						label, sig_priority, sig_priority_count = mysql_row
+					num_days = 10
+					union_alerts = []
+					for i in range(1, num_days + 1):
+						union_alerts.append(session.query(literal('0'), literal(0), date_output(subdays(i, database_database), database_database), literal('0')))
+					all_alerts = session.query(Event.sid, literal(1).label('for_sum'), date_output(Event.timestamp, database_database).label('date'), Signature.sig_priority.label('sig_priority')).join(Signature).filter(and_(date_compare(subdays(10, database_database), database_database) <= Event.timestamp, date_compare(func.now(), database_database) > Event.timestamp)).union_all(*union_alerts).subquery()
+					grouped_alerts = session.query(all_alerts.columns.date, all_alerts.columns.sig_priority, func.sum(all_alerts.columns.for_sum)).group_by(all_alerts.columns.date, all_alerts.columns.sig_priority).order_by(all_alerts.columns.date, all_alerts.columns.sig_priority).all()
+					for label, sig_priority, sig_sum in grouped_alerts:
+						sig_priority = int(sig_priority)
 						if label != last_label:							
 							graph_info_elem = xml.createElement("graph_info")
 							graph_statistics_elem.appendChild(graph_info_elem)
@@ -174,11 +122,11 @@ class Root:
 							sig_priority_elem = xml.createElement("high")
 						if sig_priority == 1 or sig_priority == 2 or sig_priority == 3:
 							graph_info_elem.appendChild(sig_priority_elem)
-							sig_priority_elem.appendChild(xml.createTextNode(str(sig_priority_count)))
+							sig_priority_elem.appendChild(xml.createTextNode(str(sig_sum)))
 						last_label = label
-					mysql_connection.close()
+					session.close()
 				elif call == "alerts":
-					mysql_connection = MySQLdb.connect(host=mysql_host, user=mysql_username, passwd=mysql_password, db=mysql_database)
+					mysql_connection = mysql_handle()
 					mysql_num_cursor = mysql_connection.cursor()
 					mysql_cursor = mysql_connection.cursor()
 					where_list = []
@@ -271,7 +219,7 @@ class Root:
 						alert_elem.appendChild(timestamp_elem)
 					mysql_connection.close()
 				elif call == "alert":
-					mysql_connection = MySQLdb.connect(host=mysql_host, user=mysql_username, passwd=mysql_password, db=mysql_database)
+					mysql_connection = mysql_handle()
 					mysql_num_cursor = mysql_connection.cursor()
 					mysql_cursor = mysql_connection.cursor()
 					mysql_cursor.execute("""
