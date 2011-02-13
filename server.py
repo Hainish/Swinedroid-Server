@@ -24,14 +24,14 @@ if config.has_option('database','username'):
 	database_username = config.get('database','username')
 if config.has_option('database','password'):
 	database_password = config.get('database','password')
-if config.has_option('database','db_name'):
-	database_db_name = config.get('database','db_name')
+if config.has_option('database','name'):
+	database_name = config.get('database','name')
 	
 def mysql_handle():
-	return MySQLdb.connect(host=database_host, user=database_username, passwd=database_password, db=database_db_name)
+	return MySQLdb.connect(host=database_host, user=database_username, passwd=database_password, db=database_name)
 
 def sqlalchemy_handle():
-	engine = create_engine(database_database + '://' + database_username + ':' + database_password + '@' + database_host + '/' + database_db_name, echo=True)
+	engine = create_engine(database_database + '://' + database_username + ':' + database_password + '@' + database_host + '/' + database_name, echo=True)
 	Session = sessionmaker(bind=engine)
 	return Session()
 
