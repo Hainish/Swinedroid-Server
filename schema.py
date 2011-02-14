@@ -9,6 +9,7 @@ from sqlalchemy.sql import text
 
 Base = declarative_base()
 
+# Table / relation mappings
 class Data(Base):
 	__tablename__ = "data"
 	sid = Column(Integer, primary_key=True)
@@ -103,7 +104,9 @@ class UdpHdr(Base):
 
 	def __repr__(self):
 		return "<UdpHdr ('%s', '%s', '%s', '%s', '%s', '%s')>" % (self.sid, self.cid, self.udp_sport, self.udp_dport, self.udp_len, self.udp_csum)
-		
+
+# Event is the base table, from which all other related tables use as a reference.
+# All relations are defined here.
 class Event(Base):
 	__tablename__ = "event"
 	sid = Column(
@@ -137,6 +140,7 @@ class Event(Base):
 	def __repr__(self):
 		return "<Event ('%s', '%s', '%s', '%s')>" % (self.sid, self.cid, self.signature, self.timestamp)
 
+# For queries that require database-specific calls....
 class DbConversion():
 	engine = 'mysql'
 	

@@ -159,6 +159,7 @@ class Root:
 					session.close()
 				elif call == "alerts":
 					session = sqlalchemy_handle()
+					# Get conditions from any search parameters passed to us
 					condition_list = []
 					if alert_severity == "High":
 						condition_list.append(Signature.sig_priority == 3)
@@ -172,6 +173,7 @@ class Root:
 						condition_list.append(Event.timestamp > dbc.date_time_to_timestamp(beginning_datetime))
 					if ending_datetime != "":
 						condition_list.append(Event.timestamp < dbc.date_time_to_timestamp(ending_datetime))
+					# Sanitize our limit and offset
 					if re.match(r'^[0-9]+$', starting_at) != None:
 						starting_at_clean = starting_at
 					else:
@@ -180,12 +182,14 @@ class Root:
 						limit_clean = int(limit)
 					else:
 						limit_clean = 30
+					# Determine total number of alerts
 					num_alerts, = session.query(func.count(Event.sid)).\
 						join(Signature, (IpHdr, Event.iphdr)).\
 						filter(and_(*condition_list)).one()
 					num_alerts_elem = xml.createElement("num_alerts")
 					root_elem.appendChild(num_alerts_elem)
 					num_alerts_elem.appendChild(xml.createTextNode(str(num_alerts)))
+					# Get alerts, passing the conditional, and output
 					alerts = session.query(
 							Event.sid,
 							Event.cid,
@@ -227,6 +231,7 @@ class Root:
 				elif call == "alert":
 					session = sqlalchemy_handle()
 					try:
+						# Query alert in a series of join statements
 						tcp_sport, tcp_dport, udp_sport, udp_dport, icmp_type, icmp_code, hostname, interface, data_payload = session.query(
 								TcpHdr.tcp_sport,
 								TcpHdr.tcp_dport,
@@ -250,6 +255,7 @@ class Root:
 						root_elem.appendChild(alert_elem)
 						protocol_elem = xml.createElement("protocol")
 						alert_elem.appendChild(protocol_elem)
+						# Display relevant information based on what fields are returned
 						if tcp_sport != None:
 							protocol_elem.appendChild(xml.createTextNode("tcp"))
 							sport_elem = xml.createElement("sport")
@@ -287,6 +293,7 @@ class Root:
 							alert_elem.appendChild(payload_elem)
 							payload_elem.appendChild(xml.createTextNode(str(data_payload)))
 					except (NoResultFound, MultipleResultsFound):
+						# No / multiple results found? output error
 						error_elem = xml.createElement("error")
 						error_elem.appendChild(xml.createTextNode("Invalid alert."))
 						root_elem.appendChild(error_elem)
@@ -296,6 +303,7 @@ class Root:
 					error_elem.appendChild(xml.createTextNode("Invalid call."))
 					root_elem.appendChild(error_elem)
 			except OperationalError, e:
+				# In case of invalid password or db server not running
 				print e.args[0]
 				error_elem = xml.createElement("error")
 				error_elem.appendChild(xml.createTextNode("A database error has occurred.  Please check your database server settings and try again later."))
