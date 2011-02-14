@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import cherrypy, ConfigParser, MySQLdb, re
+import cherrypy, ConfigParser, re
 from xml.dom import minidom
 from schema import *
 
@@ -26,12 +26,11 @@ if config.has_option('database','password'):
 	database_password = config.get('database','password')
 if config.has_option('database','name'):
 	database_name = config.get('database','name')
-	
-def mysql_handle():
-	return MySQLdb.connect(host=database_host, user=database_username, passwd=database_password, db=database_name)
+
+dbc = DbConversion(database_database)
 
 def sqlalchemy_handle():
-	engine = create_engine(database_database + '://' + database_username + ':' + database_password + '@' + database_host + '/' + database_name, echo=True)
+	engine = create_engine(database_database + '://' + database_username + ':' + database_password + '@' + database_host + '/' + database_name, echo=False)
 	Session = sessionmaker(bind=engine)
 	return Session()
 
@@ -52,7 +51,11 @@ class Root:
 					severity_profile_elem = xml.createElement("severity_profile")
 					root_elem.appendChild(severity_profile_elem)
 					# Start all-time statistics gathering
-					all_time_results = session.query(func.count(Event.sid), Signature.sig_priority).join(Signature).group_by(Signature.sig_priority).all()
+					all_time_results = session.query(
+							func.count(Event.sid),
+							Signature.sig_priority).\
+						join(Signature).\
+						group_by(Signature.sig_priority).all()
 					for all_time_event_count, all_time_priority in all_time_results:
 						severity_all_time[all_time_priority] = all_time_event_count
 					all_time_elem = xml.createElement("all_time")
@@ -67,7 +70,12 @@ class Root:
 					all_time_elem.appendChild(all_time_low_severity_elem)
 					all_time_low_severity_elem.appendChild(xml.createTextNode(str(severity_all_time[1])))
 					# Start 72-hour statistics gathering
-					last_72_results = session.query(func.count(Event.sid), Signature.sig_priority).join(Signature).filter(Event.timestamp >= subdays(3, database_database)).group_by(Signature.sig_priority).all()
+					last_72_results = session.query(
+							func.count(Event.sid),
+							Signature.sig_priority).\
+						join(Signature).\
+						filter(Event.timestamp >= dbc.subdays(3)).\
+						group_by(Signature.sig_priority).all()
 					for last_72_event_count, last_72_priority in last_72_results:
 						severity_last_72[last_72_priority] = last_72_event_count
 					last_72_elem = xml.createElement("last_72")
@@ -82,7 +90,12 @@ class Root:
 					last_72_elem.appendChild(last_72_low_severity_elem)
 					last_72_low_severity_elem.appendChild(xml.createTextNode(str(severity_last_72[1])))
 					# Start 24-hour statistics gathering
-					last_24_results = session.query(func.count(Event.sid), Signature.sig_priority).join(Signature).filter(Event.timestamp >= subdays(1, database_database)).group_by(Signature.sig_priority).all()
+					last_24_results = session.query(
+							func.count(Event.sid),
+							Signature.sig_priority).\
+						join(Signature).\
+						filter(Event.timestamp >= dbc.subdays(1)).\
+						group_by(Signature.sig_priority).all()
 					for last_24_event_count, last_24_priority in last_24_results:
 						severity_last_24[last_24_priority] = last_24_event_count
 					last_24_elem = xml.createElement("last_24")
@@ -103,9 +116,28 @@ class Root:
 					num_days = 10
 					union_alerts = []
 					for i in range(1, num_days + 1):
-						union_alerts.append(session.query(literal('0'), literal(0), date_output(subdays(i, database_database), database_database), literal('0')))
-					all_alerts = session.query(Event.sid, literal(1).label('for_sum'), date_output(Event.timestamp, database_database).label('date'), Signature.sig_priority.label('sig_priority')).join(Signature).filter(and_(date_compare(subdays(10, database_database), database_database) <= Event.timestamp, date_compare(func.now(), database_database) > Event.timestamp)).union_all(*union_alerts).subquery()
-					grouped_alerts = session.query(all_alerts.columns.date, all_alerts.columns.sig_priority, func.sum(all_alerts.columns.for_sum)).group_by(all_alerts.columns.date, all_alerts.columns.sig_priority).order_by(all_alerts.columns.date, all_alerts.columns.sig_priority).all()
+						union_alerts.append(
+							session.query(
+									literal('0'),
+									literal(0),
+									dbc.date_output(dbc.subdays(i)),
+									literal('0')))
+					all_alerts = session.query(
+							Event.sid, literal(1).label('for_sum'),
+							dbc.date_output(Event.timestamp).label('date'),
+							Signature.sig_priority.label('sig_priority')).\
+						join(Signature).\
+						filter(
+							and_(
+								dbc.date_compare(dbc.subdays(10)) <= Event.timestamp,
+								dbc.date_compare(func.now()) > Event.timestamp)).\
+						union_all(*union_alerts).subquery()
+					grouped_alerts = session.query(
+							all_alerts.columns.date,
+							all_alerts.columns.sig_priority,
+							func.sum(all_alerts.columns.for_sum)).\
+						group_by(all_alerts.columns.date, all_alerts.columns.sig_priority).\
+						order_by(all_alerts.columns.date, all_alerts.columns.sig_priority).all()
 					for label, sig_priority, sig_sum in grouped_alerts:
 						sig_priority = int(sig_priority)
 						if label != last_label:							
@@ -126,74 +158,48 @@ class Root:
 						last_label = label
 					session.close()
 				elif call == "alerts":
-					mysql_connection = mysql_handle()
-					mysql_num_cursor = mysql_connection.cursor()
-					mysql_cursor = mysql_connection.cursor()
-					where_list = []
+					session = sqlalchemy_handle()
+					condition_list = []
 					if alert_severity == "High":
-						where_list.append("signature.sig_priority='3'")
+						condition_list.append(Signature.sig_priority == 3)
 					if alert_severity == "Medium":
-						where_list.append("signature.sig_priority='2'")
+						condition_list.append(Signature.sig_priority == 2)
 					if alert_severity == "Low":
-						where_list.append("signature.sig_priority='1'")
+						condition_list.append(Signature.sig_priority == 1)
 					if search_term != "":
-						where_list.append("signature.sig_name LIKE '%" + search_term + "%'")
+						condition_list.append(Signature.sig_name.like("%" + search_term + "%"))
 					if beginning_datetime != "":
-						where_list.append("event.timestamp > '" + beginning_datetime + "'")
+						condition_list.append(Event.timestamp > dbc.date_time_to_timestamp(beginning_datetime))
 					if ending_datetime != "":
-						where_list.append("event.timestamp < '" + ending_datetime + "'")
-					if len(where_list) == 0:
-						where_list.append("1")
+						condition_list.append(Event.timestamp < dbc.date_time_to_timestamp(ending_datetime))
 					if re.match(r'^[0-9]+$', starting_at) != None:
 						starting_at_clean = starting_at
 					else:
 						starting_at_clean = "0"
 					if re.match(r'^[0-9]+$', limit) != None:
-						limit_clean = limit
+						limit_clean = int(limit)
 					else:
-						limit_clean = "30"
-					mysql_num_cursor.execute("""
-						SELECT
-							COUNT(`event`.`sid`)
-						FROM `event`
-						INNER JOIN `signature` ON
-							`signature`.`sig_id`=`event`.`signature`
-						WHERE %s
-						""" % (' AND '.join(where_list)))
+						limit_clean = 30
+					num_alerts, = session.query(func.count(Event.sid)).\
+						join(Signature, (IpHdr, Event.iphdr)).\
+						filter(and_(*condition_list)).one()
 					num_alerts_elem = xml.createElement("num_alerts")
 					root_elem.appendChild(num_alerts_elem)
-					mysql_row = mysql_num_cursor.fetchone()
-					if mysql_row != None:
-						num_alerts, = mysql_row
-					else:
-						num_alerts = 0
 					num_alerts_elem.appendChild(xml.createTextNode(str(num_alerts)))
-					mysql_cursor.execute("""
-						SELECT
-							`event`.`sid`,
-							`event`.`cid`,
-							`iphdr`.`ip_src`,
-							`iphdr`.`ip_dst`,
-							`signature`.`sig_priority`,
-							`signature`.`sig_name`,
-							`event`.`timestamp`
-						FROM `event`
-						INNER JOIN `signature` ON
-							`signature`.`sig_id`=`event`.`signature`
-						INNER JOIN `iphdr` ON
-							`event`.`sid`=`iphdr`.`sid` AND
-							`event`.`cid`=`iphdr`.`cid`
-						WHERE %s
-						ORDER BY `event`.`timestamp` DESC
-						LIMIT %s, %s
-						""" % (' AND '.join(where_list), starting_at_clean, limit_clean))
+					alerts = session.query(
+							Event.sid,
+							Event.cid,
+							IpHdr.ip_src,
+							IpHdr.ip_dst,
+							Signature.sig_priority,
+							Signature.sig_name,
+							Event.timestamp).\
+						join(Signature, (IpHdr, Event.iphdr)).\
+						filter(and_(*condition_list)).order_by(desc(Event.timestamp)).\
+						limit(limit_clean).offset(starting_at_clean).all()
 					alerts_elem = xml.createElement("alerts")
 					root_elem.appendChild(alerts_elem)
-					while 1:
-						mysql_row = mysql_cursor.fetchone()
-						if mysql_row == None:
-							break
-						sid, cid, ip_src, ip_dst, sig_priority, sig_name, timestamp = mysql_row
+					for sid, cid, ip_src, ip_dst, sig_priority, sig_name, timestamp in alerts:
 						alert_elem = xml.createElement("alert")
 						alerts_elem.appendChild(alert_elem)
 						sid_elem = xml.createElement("sid")
@@ -217,42 +223,29 @@ class Root:
 						timestamp_elem = xml.createElement("timestamp")
 						timestamp_elem.appendChild(xml.createTextNode(str(timestamp)))
 						alert_elem.appendChild(timestamp_elem)
-					mysql_connection.close()
+					session.close()
 				elif call == "alert":
-					mysql_connection = mysql_handle()
-					mysql_num_cursor = mysql_connection.cursor()
-					mysql_cursor = mysql_connection.cursor()
-					mysql_cursor.execute("""
-						SELECT
-							`tcphdr`.`tcp_sport`,
-							`tcphdr`.`tcp_dport`,
-							`udphdr`.`udp_sport`,
-							`udphdr`.`udp_dport`,
-							`icmphdr`.`icmp_type`,
-							`icmphdr`.`icmp_code`,
-							`sensor`.`hostname`,
-							`sensor`.`interface`,
-							`data`.`data_payload`
-						FROM (SELECT '%s' AS sid, '%s' AS cid) AS `abstract`
-						LEFT JOIN `tcphdr` ON
-							`abstract`.`sid`=`tcphdr`.`sid` AND
-							`abstract`.`cid`=`tcphdr`.`cid`
-						LEFT JOIN `udphdr` ON
-							`abstract`.`sid`=`udphdr`.`sid` AND
-							`abstract`.`cid`=`udphdr`.`cid`
-						LEFT JOIN `icmphdr` ON
-							`abstract`.`sid`=`icmphdr`.`sid` AND
-							`abstract`.`cid`=`icmphdr`.`cid`
-						LEFT JOIN `data` ON
-							`abstract`.`sid`=`data`.`sid` AND
-							`abstract`.`cid`=`data`.`cid`
-						LEFT JOIN `sensor` ON
-							`abstract`.`sid`=`sensor`.`sid`
-						""" % (sid, cid))
-					mysql_row = mysql_cursor.fetchone()
-					if mysql_row != None:
-						print mysql_row
-						tcp_sport, tcp_dport, udp_sport, udp_dport, icmp_type, icmp_code, hostname, interface, data_payload = mysql_row
+					session = sqlalchemy_handle()
+					try:
+						tcp_sport, tcp_dport, udp_sport, udp_dport, icmp_type, icmp_code, hostname, interface, data_payload = session.query(
+								TcpHdr.tcp_sport,
+								TcpHdr.tcp_dport,
+								UdpHdr.udp_sport,
+								UdpHdr.udp_dport,
+								IcmpHdr.icmp_type,
+								IcmpHdr.icmp_code,
+								Sensor.hostname,
+								Sensor.interface,
+								Data.data_payload
+							).\
+							select_from(Event).\
+							outerjoin(
+								(TcpHdr, Event.tcphdr),
+								(UdpHdr, Event.udphdr),
+								(IcmpHdr, Event.icmphdr),
+								(Sensor, Event.sensor),
+								(Data, Event.data)
+							).filter(and_(Event.sid == sid, Event.cid == cid)).one()
 						alert_elem = xml.createElement("alert")
 						root_elem.appendChild(alert_elem)
 						protocol_elem = xml.createElement("protocol")
@@ -293,23 +286,23 @@ class Root:
 							payload_elem = xml.createElement("payload")
 							alert_elem.appendChild(payload_elem)
 							payload_elem.appendChild(xml.createTextNode(str(data_payload)))
-					else:
+					except (NoResultFound, MultipleResultsFound):
 						error_elem = xml.createElement("error")
 						error_elem.appendChild(xml.createTextNode("Invalid alert."))
 						root_elem.appendChild(error_elem)
-					mysql_connection.close()
+					session.close()
 				else:
 					error_elem = xml.createElement("error")
 					error_elem.appendChild(xml.createTextNode("Invalid call."))
 					root_elem.appendChild(error_elem)
-			except MySQLdb.Error, e:
-				print "Error: %d: %s" % (e.args[0], e.args[1])
+			except OperationalError, e:
+				print e.args[0]
 				error_elem = xml.createElement("error")
-				error_elem.appendChild(xml.createTextNode("A MySQL error has occurred.  Please check your MySQL server settings and try again later."))
+				error_elem.appendChild(xml.createTextNode("A database error has occurred.  Please check your database server settings and try again later."))
 				root_elem.appendChild(error_elem)
 		else:
 			error_elem = xml.createElement("error")
-			error_elem.appendChild(xml.createTextNode("Incorrect username or password."))
+			error_elem.appendChild(xml.createTextNode("Swinedroid: Incorrect username or password."))
 			root_elem.appendChild(error_elem)
 		cherrypy.response.headers['Content-Type'] = "text/xml"
 		return xml.toxml("UTF-8")

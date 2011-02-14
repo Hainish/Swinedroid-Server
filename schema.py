@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 from sqlalchemy import create_engine, Column, Integer, SmallInteger, DateTime, String, Text, and_, ForeignKey, desc, func, literal
-from sqlalchemy.orm import sessionmaker, relation, backref, joinedload, aliased
+from sqlalchemy.orm import sessionmaker, relation, backref
+from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql import text, select
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.sql import text
 
 Base = declarative_base()
 
@@ -135,20 +137,33 @@ class Event(Base):
 	def __repr__(self):
 		return "<Event ('%s', '%s', '%s', '%s')>" % (self.sid, self.cid, self.signature, self.timestamp)
 
-def subdays(days, engine):
-	if engine == "mysql":
-		return func.subdate(func.now(), days)
-	if engine == "postgresql":
-		return func.current_timestamp() - text("INTERVAL '" + str(days) + " day'")
-		
-def date_output(t, engine):
-	if engine == "mysql":
-		return func.date_format(t, '%m/%d')
-	if engine == "postgresql":
-		return func.to_char(t, 'MM/DD')
+class DbConversion():
+	engine = 'mysql'
+	
+	def __init__(self, engine):
+		if engine == "mysql" or engine == "postgresql":
+			self.engine = engine
+	
+	def subdays(self, days):
+		if self.engine == "mysql":
+			return func.subdate(func.now(), days)
+		if self.engine == "postgresql":
+			return func.current_timestamp() - text("INTERVAL '" + str(days) + " day'")
+			
+	def date_output(self, t):
+		if self.engine == "mysql":
+			return func.date_format(t, '%m/%d')
+		if self.engine == "postgresql":
+			return func.to_char(t, 'MM/DD')
 
-def date_compare(t, engine):
-	if engine == "mysql":
-		return func.date_format(t, '%Y-%m-%d')
-	if engine == "postgresql":
-		return func.to_timestamp(func.to_char(t, 'YYYY-MM-DD'), 'YYYY-MM-DD')
+	def date_compare(self, t):
+		if self.engine == "mysql":
+			return func.date_format(t, '%Y-%m-%d')
+		if self.engine == "postgresql":
+			return func.to_timestamp(func.to_char(t, 'YYYY-MM-DD'), 'YYYY-MM-DD')
+
+	def date_time_to_timestamp(self, t):
+		if self.engine == "mysql":
+			return t
+		if self.engine == "postgresql":
+			return func.to_timestamp(t, 'YYYY-MM-DD HH24:MI')
