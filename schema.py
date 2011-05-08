@@ -130,11 +130,11 @@ class Event(Base):
 	timestamp = Column(DateTime)
 	
 	sensor = relation(Sensor, backref='events')
-	iphdr = relation(IpHdr, backref='event', primaryjoin=and_(sid==IpHdr.sid, cid==IpHdr.cid))
-	icmphdr = relation(IcmpHdr, backref='event', primaryjoin=and_(sid==IcmpHdr.sid, cid==IcmpHdr.cid))
-	tcphdr = relation(TcpHdr, backref='event', primaryjoin=and_(sid==TcpHdr.sid, cid==TcpHdr.cid))
-	udphdr = relation(UdpHdr, backref='event', primaryjoin=and_(sid==UdpHdr.sid, cid==UdpHdr.cid))
-	data = relation(Data, backref='event', primaryjoin=and_(sid==Data.sid, cid==Data.cid))
+	iphdr = relation(IpHdr, backref='event', primaryjoin=and_(sid==IpHdr.sid, cid==IpHdr.cid), cascade="all, delete, delete-orphan")
+	icmphdr = relation(IcmpHdr, backref='event', primaryjoin=and_(sid==IcmpHdr.sid, cid==IcmpHdr.cid), cascade="all, delete, delete-orphan")
+	tcphdr = relation(TcpHdr, backref='event', primaryjoin=and_(sid==TcpHdr.sid, cid==TcpHdr.cid), cascade="all, delete, delete-orphan")
+	udphdr = relation(UdpHdr, backref='event', primaryjoin=and_(sid==UdpHdr.sid, cid==UdpHdr.cid), cascade="all, delete, delete-orphan")
+	data = relation(Data, backref='event', primaryjoin=and_(sid==Data.sid, cid==Data.cid), cascade="all, delete, delete-orphan")
 	signatureObj = relation(Signature, backref='events', primaryjoin=signature == Signature.sig_id)
 	
 	def __repr__(self):

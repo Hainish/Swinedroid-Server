@@ -1,3 +1,5 @@
+from config import *
+
 class Root:
 	def index(self, username="", password="", call="", alert_severity="", search_term="", beginning_datetime="", ending_datetime="", starting_at="", limit="", sid="", cid=""):
 		# Create a new xml document, append root
@@ -262,8 +264,26 @@ class Root:
 						error_elem.appendChild(xml.createTextNode("Invalid alert."))
 						root_elem.appendChild(error_elem)
 					session.close()
-				elif call == "ipfilter":
-					print "test"
+				elif call == "delete":
+					session = sqlalchemy_handle()
+					if database_writable != "yes":
+						raise Exception("Database is not writable.  Please check your Swinedroid configuration settings.")
+					try:
+						event = session.query(Event).\
+							outerjoin(
+								(TcpHdr, Event.tcphdr),
+								(UdpHdr, Event.udphdr),
+								(IcmpHdr, Event.icmphdr),
+								(Data, Event.data)
+							).filter(and_(Event.sid == sid, Event.cid == cid)).one()
+						session.delete(event)
+						session.commit()
+					except NoResultFound:
+						raise Exception("No alert found with given sid, cid.")
+					message_elem = xml.createElement("message")
+					message_elem.appendChild(xml.createTextNode("success"))
+					root_elem.appendChild(message_elem)
+					session.close()
 				else:
 					error_elem = xml.createElement("error")
 					error_elem.appendChild(xml.createTextNode("Invalid call."))
@@ -273,6 +293,10 @@ class Root:
 				print e.args[0]
 				error_elem = xml.createElement("error")
 				error_elem.appendChild(xml.createTextNode("A database error has occurred.  Please check your database server settings and try again later."))
+				root_elem.appendChild(error_elem)
+			except Exception, inst:
+				error_elem = xml.createElement("error")
+				error_elem.appendChild(xml.createTextNode(inst.args[0]))
 				root_elem.appendChild(error_elem)
 		else:
 			error_elem = xml.createElement("error")
